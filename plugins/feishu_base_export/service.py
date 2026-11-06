@@ -130,8 +130,18 @@ def _save_issued(open_id: str, issued: dict, deps: Deps) -> None:
     })
 
 
+def _session_from_env() -> dict:
+    from gateway.session_context import get_session_env
+    return {
+        "message_id": get_session_env("HERMES_SESSION_MESSAGE_ID", ""),
+        "chat_id": get_session_env("HERMES_SESSION_CHAT_ID", ""),
+        "chat_type": get_session_env("HERMES_SESSION_CHAT_TYPE", ""),
+        "platform": get_session_env("HERMES_SESSION_PLATFORM", ""),
+    }
+
+
 def _binding(deps: Deps):
-    session = deps.session
+    session = deps.session or _session_from_env()
     return deps.bindings.match(
         message_id=str(session.get("message_id") or ""),
         chat_id=str(session.get("chat_id") or ""),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from plugins.feishu_base_export.binding import consider_event, default_store
 from plugins.feishu_base_export.delivery import transform_response
+from plugins.feishu_base_export.dpapi import DpapiUnavailable
 from plugins.feishu_base_export.service import finish_callback
 
 
@@ -14,12 +15,16 @@ def on_pre_gateway_dispatch(event=None, **kwargs):
         binding = consider_event(event, default_store())
     except (AttributeError, TypeError, ValueError):
         return None
-    deps = kwargs.get("_deps")
     text = getattr(event, "text", "") if not isinstance(event, dict) else event.get("text", "")
-    if binding is None or deps is None or not text:
+    if binding is None or not text or "code=" not in text or "state=" not in text:
         return None
-    if "code=" not in text or "state=" not in text:
-        return None
+    try:
+        deps = kwargs.get("_deps") or _active_deps()
+    except DpapiUnavailable:
+        return {"action": "rewrite", "text": "无法保存用户 token：当前系统没有 Windows DPAPI。"}
+    missing = deps.config.missing()
+    if missing:
+        return {"action": "rewrite", "text": "授权还不能完成，缺少: " + ", ".join(missing)}
     result = finish_callback(text, binding=binding, deps=deps)
     if result.get("status") == "authorized":
         return {"action": "rewrite", "text": "飞书授权已完成。请再说一次要导出的多维表格。"}
@@ -33,6 +38,11 @@ def on_transform_llm_output(response_text: str = "", **kwargs):
         message_id = _session_message_id()
     rendered = transform_response(response_text, message_id=message_id)
     return rendered
+
+
+def _active_deps():
+    from plugins.feishu_base_export.tool import active_deps
+    return active_deps()
 
 
 def _session_message_id() -> str:

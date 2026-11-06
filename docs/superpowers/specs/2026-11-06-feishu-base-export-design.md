@@ -14,7 +14,7 @@
 
 机主和同一 OS 用户的 shell 仍能读到进程能读的文件。token 在 `mcp-tokens/` 下，读工具会拒绝，这不是强沙箱。非 Windows 不落盘明文，DPAPI 只在 Windows 调用。
 
-对照本机 `a992c8f1` 的四个文件（未提交进仓库）：`register_tool` / `register_hook` 参数没变，`pre_gateway_dispatch` 和 `transform_llm_output` 仍在，工具线程仍经 `propagate_context_to_thread` 提交。`registry.dispatch` 仍是 `handler(args, **kwargs)`，多出来的 `task_id` / `session_id` / `user_task` 不能当飞书身份。本地 `model_tools.py` 在进 handler 前多了一道 capability 检查：结果是 `None` 或 `allowed` 为假就拒绝。插件不能把自己标成 read_only。`agent/runtime_capability.py` 不在这四份源码里，所以还不能证明这道门会放行 `feishu_base_export`。不把那份本地补丁抄进插件。
+对照本机 `a992c8f1`：`register_tool` / `register_hook` 没变，工具线程仍走 `propagate_context_to_thread`。`feishu_base_export` 不在 `READ_ONLY_TOOLS` 里，插件也不能自标 read_only。正常放行只有一条：`HERMES_HOME/runtime-policy.json`（或 `runtime_capability.manifest_file` 指定的文件名）指向项目内、SHA256 相符的策略，且 `evaluate(request)` 对 `tool_name == "feishu_base_export"` 返回 `{"allowed": true, "reason": "<非空>"}`。没有这份策略时原因是 `missing_manifest`。不把该工具加进只读名单，也不改这道门。
 
 ## 证据，含上轮需要改口的地方
 
