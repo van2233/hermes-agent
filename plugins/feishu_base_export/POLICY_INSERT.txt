@@ -1,0 +1,5 @@
+# Pending review only. Do not replace runtime-policy.json and do not run this file.
+# Insert the next two lines at the top of the existing evaluate(request).
+# Leave every other tool on the previous return. Do not add an else that denies them.
+if request.get("tool_name") == "feishu_base_export":
+    return {"allowed": True, "reason": "feishu base export"}
