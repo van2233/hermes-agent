@@ -11,9 +11,7 @@ from plugins.feishu_base_export.bitable_xlsx import export_bitable_xlsx
 from plugins.feishu_base_export.blocked import CHART_BLOCKED
 from plugins.feishu_base_export.config import RuntimeConfig
 from plugins.feishu_base_export.delivery import stage_file, stage_text
-from plugins.feishu_base_export.oauth_flow import (
-    OAuthError, build_authorize_url, exchange_code, parse_callback, refresh_access, user_open_id,
-)
+from plugins.feishu_base_export.oauth_flow import OAuthError, build_authorize_url, refresh_access
 from plugins.feishu_base_export.oauth_state import StateStore
 
 _LOCKS: dict[str, threading.Lock] = {}
@@ -37,23 +35,24 @@ def run_action(args: dict, deps: Deps) -> dict:
     action = str((args or {}).get("action") or "")
     if action in CHART_ACTIONS:
         return {"ok": False, "status": "blocked", "action": action, "reason": CHART_BLOCKED}
+    if action == "check":
+        from plugins.feishu_base_export.callback import describe_setup
+        return describe_setup(deps.config)
     binding = _binding(deps)
     if binding is None:
         return {"ok": False, "status": "unavailable", "action": action, "reason": "没有已核验的飞书私聊身份，拒绝导出。"}
     if action == "revoke":
         with _lock(binding.open_id):
             deps.tokens.delete(binding.open_id)
-        return {"ok": True, "status": "revoked", "action": action}
+        return {
+            "ok": True, "status": "revoked", "action": action,
+            "reason": "已删除本机保存的该用户 token。这不是飞书侧撤销授权。",
+        }
     if action != "export_xlsx":
         return {"ok": False, "status": "rejected", "action": action, "reason": "unknown action"}
-    missing = deps.config.missing()
+    missing = deps.config.callback_problems()
     if missing:
         return {"ok": False, "status": "setup-required", "action": action, "missing": missing}
-    pasted = str((args or {}).get("callback_url") or "")
-    if pasted:
-        finished = finish_callback(pasted, binding=binding, deps=deps)
-        if finished.get("status") != "authorized":
-            return finished
     stored = _usable_token(binding.open_id, deps)
     if stored is None:
         return _need_auth(binding, deps)
@@ -73,33 +72,11 @@ def run_action(args: dict, deps: Deps) -> dict:
     return {"ok": True, "status": "ready", "action": action, "delivery": "private-dm"}
 
 
-def finish_callback(text: str, *, binding, deps: Deps) -> dict:
-    parsed = parse_callback(text, deps.config.redirect_uri)
-    if parsed is None:
-        return {"ok": False, "status": "oauth-failed", "reason": "回调地址里没有授权码。"}
-    code, state = parsed
-    pending = deps.states.peek(state, now=deps.now)
-    if pending is None or pending.open_id != binding.open_id:
-        return {"ok": False, "status": "oauth-failed", "reason": "授权状态无效或已使用。"}
-    record = deps.states.consume(state, now=deps.now)
-    if record is None:
-        return {"ok": False, "status": "oauth-failed", "reason": "授权状态无效或已使用。"}
-    try:
-        issued = exchange_code(deps.transport, deps.config, code=code, verifier=record.verifier)
-        got = user_open_id(deps.transport, deps.config, issued["access_token"])
-    except OAuthError as exc:
-        return {"ok": False, "status": "oauth-failed", "reason": str(exc)}
-    if got != binding.open_id:
-        return {"ok": False, "status": "oauth-failed", "reason": "授权账号和当前私聊不是同一个飞书应用用户。"}
-    _save_issued(binding.open_id, issued, deps)
-    return {"ok": True, "status": "authorized", "action": "export_xlsx"}
-
-
 def _need_auth(binding, deps: Deps) -> dict:
     state = deps.states.issue(open_id=binding.open_id, now=deps.now)
     challenge = deps.states.challenge_of(state)
     url = build_authorize_url(deps.config, state=state, challenge=challenge or "")
-    text = "请在浏览器打开并授权，然后把完整回调地址发回这个私聊：\n" + url
+    text = "请在浏览器打开这个链接完成授权。不要把回调地址或授权码发到聊天里。\n" + url
     stage_text(binding.message_id, text)
     return {"ok": False, "status": "need_auth", "action": "export_xlsx", "authorize_url": url, "reason": text}
 
@@ -116,11 +93,11 @@ def _usable_token(open_id: str, deps: Deps) -> str | None:
         except OAuthError:
             deps.tokens.delete(open_id)
             return None
-        _save_issued(open_id, issued, deps)
+        save_issued(open_id, issued, deps)
         return issued["access_token"]
 
 
-def _save_issued(open_id: str, issued: dict, deps: Deps) -> None:
+def save_issued(open_id: str, issued: dict, deps: Deps) -> None:
     deps.tokens.save(open_id, {
         "access_token": issued["access_token"],
         "refresh_token": issued["refresh_token"],

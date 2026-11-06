@@ -42,7 +42,10 @@ def test_export_requires_setup_then_auth_then_writes_only_the_caller_file(tmp_pa
     assert "redirect_uri" in missing["missing"]
     assert "FEISHU_APP_ID" in missing["missing"]
 
-    config = RuntimeConfig(app_id="cli_app", app_secret="app-secret-value", redirect_uri="https://cb.example.com/feishu")
+    config = RuntimeConfig(
+        app_id="cli_app", app_secret="app-secret-value",
+        redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
+    )
     reset_ledger()
     deps = _deps(lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")), store, session, tmp_path, config)
     need = json.loads(handle(
@@ -85,10 +88,12 @@ def test_export_requires_setup_then_auth_then_writes_only_the_caller_file(tmp_pa
             "job_status": 0, "file_token": "boxcnxe5OdjlAkNgSNdsJvabcef", "file_size": len(good),
         }}}).encode())
 
-    pasted = f"https://cb.example.com/feishu?code=one-time-code&state={state}"
+    from plugins.feishu_base_export.callback import handle_callback
     deps.transport = transport
+    status, body = handle_callback({"code": "one-time-code", "state": state}, deps=deps, now=deps.now)
+    assert status == 200 and "one-time-code" not in body and "u-user" not in body
     ready = json.loads(handle(
-        {"action": "export_xlsx", "base_token": BASE, "callback_url": pasted, "open_id": OTHER_ID},
+        {"action": "export_xlsx", "base_token": BASE, "callback_url": "https://cb.example.com/feishu?code=one-time-code&state=" + state, "open_id": OTHER_ID},
         _deps=deps,
     ))
     assert ready["status"] == "ready"
@@ -108,7 +113,10 @@ def test_oauth_rejects_other_open_id_and_revoke_drops_the_token(tmp_path):
     store = BindingStore()
     consider_event(_event(message_id="om_2"), store)
     session = {"message_id": "om_2", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"}
-    config = RuntimeConfig(app_id="cli_app", app_secret="app-secret-value", redirect_uri="https://cb.example.com/feishu")
+    config = RuntimeConfig(
+        app_id="cli_app", app_secret="app-secret-value",
+        redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
+    )
     deps = _deps(lambda *a, **k: (_ for _ in ()).throw(AssertionError("no")), store, session, tmp_path, config)
     need = json.loads(handle({"action": "export_xlsx"}, _deps=deps))
     state = __import__("urllib.parse", fromlist=["unquote"]).unquote(need["authorize_url"].split("state=")[1].split("&")[0])
@@ -121,17 +129,15 @@ def test_oauth_rejects_other_open_id_and_revoke_drops_the_token(tmp_path):
             }).encode())
         return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"open_id": OTHER_ID}}).encode())
 
+    from plugins.feishu_base_export.callback import handle_callback
     deps.transport = transport
-    failed = json.loads(handle(
-        {"action": "export_xlsx", "callback_url": f"https://cb.example.com/feishu?code=abc&state={state}"},
-        _deps=deps,
-    ))
-    assert failed["status"] == "oauth-failed"
-    assert "同一个飞书应用用户" in failed["reason"]
+    status, body = handle_callback({"code": "abc", "state": state}, deps=deps, now=deps.now)
+    assert status == 400 and body == "授权失败" and "abc" not in body and "u-other" not in body
     assert deps.tokens.load(OPEN_ID) is None
     deps.tokens.save(OPEN_ID, {"access_token": "u-user", "refresh_token": "r-user", "expires_at": 10**12})
     revoked = json.loads(handle({"action": "revoke"}, _deps=deps))
     assert revoked["status"] == "revoked"
+    assert "不是飞书" in revoked["reason"]
     assert deps.tokens.load(OPEN_ID) is None
 
 
@@ -142,7 +148,10 @@ def test_refresh_replaces_single_use_token_and_private_url_is_rejected(tmp_path)
     store = BindingStore()
     consider_event(_event(message_id="om_3"), store)
     session = {"message_id": "om_3", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"}
-    config = RuntimeConfig(app_id="cli_app", app_secret="app-secret-value", redirect_uri="https://cb.example.com/feishu")
+    config = RuntimeConfig(
+        app_id="cli_app", app_secret="app-secret-value",
+        redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
+    )
     good = _xlsx()
     seen = []
 

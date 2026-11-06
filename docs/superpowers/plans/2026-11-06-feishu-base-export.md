@@ -14,7 +14,7 @@
 - 不覆盖已有 skills，不 `git add -A`，不向 NousResearch 推送，不合并。
 - 不部署用户机，不改 bot 配置或飞书权限，不重启，不读凭据，不发消息，不开隧道。
 - 不把 `a992c8f1` 写成已兼容。那两笔本地提交的源码不在本仓库。
-- 设备码、公网回调、图表 v3 HTTP、出站 `MEDIA:` 都不实现。
+- 不做设备码，不监听公网，不建隧道。回调只绑定 loopback，且必须有已登记的 HTTPS `redirect_uri`。图表 v3 HTTP 不实现。
 - Linux 上的 DPAPI 测试只允许证明「拒绝」。Windows 往返必须在 `windows_only` 上跑过才算 DPAPI 通过。
 - 单文件不超过 400 行。
 
@@ -107,10 +107,10 @@
 
 ### Task 5: 仍不能做的事
 
-- [ ] 对照本地四文件后再决定 hook 是否还能注册。
-- [ ] 官方如果补上「已有自建应用的设备码换 user_access_token」，再写获取流程。在那之前不开回调。
-- [ ] server-docs 写出图表数据接口的方法和 scope 之后，再让 `chart_png` / `chart_pdf` 调用它，并继续使用现有画图函数加水印。
-- [ ] 出站改成不经过模型回显的发送之后，才允许工具写 xlsx 并让网关发给当前私聊。禁止 home channel，禁止参数里的 chat_id。
+- [x] 五份本机源码已对照，工作树 status 仍为空。hook 可以注册。授权码不进聊天。
+- [x] 不实现设备码。loopback 回调只在 HTTPS 重定向和 `callback_enabled` 齐备时启动。
+- [ ] server-docs 写出图表数据接口的方法和 scope 之后，再让 `chart_png` / `chart_pdf` 调用它。
+- [x] xlsx 经 `transform_llm_output` 注入当前私聊的 `MEDIA:`。禁止参数里的 chat_id。部署脚本必须显式接收 profile 路径。
 
 ## 验证命令
 
@@ -118,4 +118,4 @@
 HERMES_PYTHON=/tmp/feishu-venv/bin/python scripts/run_tests.sh tests/plugins/test_feishu_base_export.py --tb=short -q
 ```
 
-2026-11-06 在本工作区的结果：15 passed，1 skipped（`windows_only`）。跳过的那条不是 DPAPI 通过。
+2026-11-06 在本工作区的结果：六个测试文件 27 passed，1 skipped（`windows_only`）。跳过的那条不是 DPAPI 通过。

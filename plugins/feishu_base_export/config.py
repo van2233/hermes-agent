@@ -1,8 +1,10 @@
-"""Deploy-time settings. Missing values are setup-required, not a silent export."""
+"""Deploy-time settings. Missing HTTPS callback settings are setup-required."""
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 DEFAULT_SCOPES = "offline_access drive:export:readonly docs:document:export"
 
@@ -15,6 +17,9 @@ class RuntimeConfig:
     api_host: str = "open.feishu.cn"
     accounts_host: str = "accounts.feishu.cn"
     scopes: str = DEFAULT_SCOPES
+    listen_host: str = "127.0.0.1"
+    listen_port: int = 8766
+    callback_enabled: bool = False
 
     def missing(self) -> list[str]:
         missing = []
@@ -25,6 +30,42 @@ class RuntimeConfig:
         if not self.redirect_uri:
             missing.append("redirect_uri")
         return missing
+
+    def callback_problems(self) -> list[str]:
+        problems = self.missing()
+        if self.redirect_uri and not public_https(self.redirect_uri):
+            problems.append("redirect_uri_https")
+        if not loopback_host(self.listen_host):
+            problems.append("listen_host_loopback")
+        if not isinstance(self.listen_port, int) or not 1 <= self.listen_port <= 65535:
+            problems.append("listen_port")
+        if not self.callback_enabled:
+            problems.append("callback_enabled")
+        return problems
+
+
+def loopback_host(host: str) -> bool:
+    value = (host or "").strip().lower()
+    if value in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+def public_https(uri: str) -> bool:
+    parts = urlsplit(uri or "")
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not host or not parts.path or parts.path == "/":
+        return False
+    if loopback_host(host):
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return False
 
 
 def production_config() -> RuntimeConfig:
@@ -38,7 +79,23 @@ def production_config() -> RuntimeConfig:
         api_host=str(settings.get("api_host") or "open.feishu.cn"),
         accounts_host=str(settings.get("accounts_host") or "accounts.feishu.cn"),
         scopes=str(settings.get("scopes") or DEFAULT_SCOPES),
+        listen_host=str(settings.get("listen_host") or "127.0.0.1"),
+        listen_port=_port(settings.get("listen_port")),
+        callback_enabled=_flag(settings.get("callback_enabled")),
     )
+
+
+def _flag(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _port(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 8766
 
 
 def _plugin_settings() -> dict:

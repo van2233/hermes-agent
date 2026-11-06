@@ -8,13 +8,13 @@
 
 ## 这一轮实际做到的边界
 
-`export_xlsx` 在私聊绑定存在、并且 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`redirect_uri` 都有值时，会发出授权链接、用回调里的 code 换 token、核对同一应用的 `open_id`、按需刷新，再调用官方 Drive 导出。缺任何一项返回 `setup-required`，不会无条件 blocked。`revoke` 删除该 open_id 的本地 token。`chart_png` / `chart_pdf` 仍 blocked。
+`export_xlsx` 在私聊绑定存在，并且应用凭据、已登记的公网 HTTPS `redirect_uri`、`callback_enabled` 和 loopback 监听地址都齐备时，才发授权链接。授权码只由 loopback HTTP 回调接收，再换 token、核对同一应用的 `open_id`、按需刷新，然后调用官方 Drive 导出。聊天里出现 `code=` 只会被改写成固定提示，不会换 token。缺任一项返回 `setup-required`。`check` 只报告缺项，不监听端口。`revoke` 只删除本机 token，不是飞书侧撤销。`chart_png` / `chart_pdf` 仍 blocked。
 
 私聊文件不改核心。网关把最终回复里的 `MEDIA:` 发给当前消息的 `chat_id`。自动补附件只信任 `text_to_speech` 和 `image_generate`（`gateway/run.py` 的 `_AUTO_APPEND_MEDIA_TOOL_NAMES`）。插件用 `transform_llm_output` 去掉模型写的其它 `MEDIA:`，再写上本轮唯一路径。发送者 open_id 只来自原始事件；工具参数里的 open_id 被忽略。会话 message_id 对不上绑定就拒绝。
 
 机主和同一 OS 用户的 shell 仍能读到进程能读的文件。token 在 `mcp-tokens/` 下，读工具会拒绝，这不是强沙箱。非 Windows 不落盘明文，DPAPI 只在 Windows 调用。
 
-对照本机 `a992c8f1`：`register_tool` / `register_hook` 没变，工具线程仍走 `propagate_context_to_thread`。`feishu_base_export` 不在 `READ_ONLY_TOOLS` 里，插件也不能自标 read_only。正常放行只有一条：`HERMES_HOME/runtime-policy.json`（或 `runtime_capability.manifest_file` 指定的文件名）指向项目内、SHA256 相符的策略，且 `evaluate(request)` 对 `tool_name == "feishu_base_export"` 返回 `{"allowed": true, "reason": "<非空>"}`。没有这份策略时原因是 `missing_manifest`。不把该工具加进只读名单，也不改这道门。
+对照本机 `a992c8f1`：`register_tool` / `register_hook` 没变，工具线程仍走 `propagate_context_to_thread`。`feishu_base_export` 不在 `READ_ONLY_TOOLS` 里，插件也不能自标 read_only。`hermes config get runtime_capability.manifest_file` 的输出是相对名 `runtime-policy.json`，文件本身没有打开。正常放行是在已有 `evaluate(request)` 里加一条：`tool_name == "feishu_base_export"` 时返回允许，其它工具仍走原来的判断。没有清单时原因是 `missing_manifest`。不把该工具加进只读名单，也不改这道门，本轮不在机器上执行策略。
 
 ## 证据，含上轮需要改口的地方
 
@@ -43,7 +43,7 @@ pin 上 `tools/thread_context.py::propagate_context_to_thread` 会 `contextvars.
 - `GET https://open.feishu.cn/open-apis/authen/v1/user_info` 的 `open_id` 说明是「用户在应用内的唯一标识」。示例是 `ou-...`。适配器注释里的事件 id 是 `ou_`。绑定同时接受这两种前缀，并拒绝 `u_` / `on_`。
 - 官方「Device Authorization Grant」文档出现在一键创建应用（`registerApp`）流程，产物是应用凭证，不是「已有自建 bot 用同一应用给同事换 user_access_token」。第三方仓库里的 `accounts.feishu.cn/oauth/v1/device_authorization` 没有被上述用户令牌文档列为 grant。CLI 实测设备登录成功，不能当成这个 bot 应用的官方设备码接口。
 
-因此：不实现设备码轮询，不借用 CLI 的 client，不刮取 CLI 凭据，不监听公网回调，不建隧道。HTTPS 回调仍只是以后的备选。state 用 `secrets.token_urlsafe`，服务端保存 open_id 和 PKCE verifier；state 字符串本身不含 open_id，也不用 App Secret 签名。
+因此：不实现设备码轮询，不借用 CLI 的 client，不刮取 CLI 凭据，不监听公网，不建隧道。默认只绑定 `127.0.0.1`。`redirect_uri` 必须是管理员已经在飞书登记的 HTTPS 地址，主机名不能是 loopback、`.local` 或 IP。没有这份配置就保持 `setup-required`。state 用 `secrets.token_urlsafe`，服务端保存 open_id 和 PKCE verifier；state 字符串本身不含 open_id。回调响应和日志不回显 code。
 
 ### 图表 transport 未当成已验证
 
@@ -73,6 +73,6 @@ DPAPI 只在 `sys.platform == win32` 时调用 `CryptProtectData`。其他平台
 
 ## 部署
 
-不要在用户 Windows 安装目录上 `git pull` 这个 fork。那边的 origin 仍是 NousResearch 上游，拉取会盖住安装树和已有 dirty skills。本机 `HERMES_HOME`、WebSocket/webhook 未知。Gateway PID 51168 只作为只读元数据，本轮没有重启，也没有读它的配置或凭据。
+不要在用户 Windows 安装目录上 `git pull` 这个 fork。那边的 origin 仍是 NousResearch 上游，拉取会盖住安装树和已有 dirty skills。只读核查：`hermes config path` 打印 `C:\Users\21292\AppData\Local\hermes\config.yaml`，`hermes config env-path` 打印同目录 `.env`，两份文件都没有打开。安装根是 `C:\Users\21292\AppData\Local\hermes\hermes-agent`，HEAD 仍是 `a992c8f1c47354748a9cfa669905bf58e50ee9c2`。Gateway `list/default` 的 current PID 是 51168，计划任务 `Hermes_Gateway` 已注册。没有证据证明这个进程的 `HERMES_HOME` 等于 CLI 的 config 目录，不能把两者写成已经核对一致。部署脚本必须由操作员显式传入目标 profile 路径，不能猜 `~\.hermes`，也不能写到另一个 profile。本轮没有安装插件、没有改配置、没有读 secret、没有跑策略、没有监听端口。
 
-部署前必须拿到并对照这四个本地文件的源码：`hermes_cli/plugins.py`、`tools/registry.py`、`model_tools.py`、`agent/tool_executor.py`。对照通过之前，不要把插件拷进运行中的 `HERMES_HOME`，不要改飞书权限，不要发版。
+`hermes_cli/plugins.py`、`tools/registry.py`、`model_tools.py`、`agent/tool_executor.py` 和 `agent/runtime_capability.py` 已对照过，这五份路径的工作树 status 仍为空。对照结果不改变上面的路径结论：插件仍不拷贝，配置仍不改，策略仍不跑。操作员以后只能把官方命令查到的那个 profile 路径显式传给 `prepare_profile.py`。

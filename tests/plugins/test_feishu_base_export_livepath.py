@@ -58,7 +58,7 @@ def test_hook_and_tool_thread_export_only_the_event_open_id(tmp_path):
         output=tmp_path,
         config=RuntimeConfig(
             app_id="cli_app", app_secret="app-secret-value",
-            redirect_uri="https://cb.example.com/feishu",
+            redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
         ),
     )
     # Session fields are read inside the worker from the copied context, not from this object.
@@ -94,6 +94,22 @@ def test_hook_and_tool_thread_export_only_the_event_open_id(tmp_path):
         rewritten = manager.invoke_hook("pre_gateway_dispatch", event=pasted)
         assert rewritten and rewritten[0]["action"] == "rewrite"
         assert "one-time-code" not in rewritten[0]["text"]
+        assert "cb.example.com" not in rewritten[0]["text"]
+        assert deps.tokens.load(OPEN_ID) is None
+        assert not any("/oauth/token" in str(call[1]) for call in calls)
+        from plugins.feishu_base_export.callback import start_loopback, stop_loopback
+        import urllib.request
+        server = start_loopback(deps.config, deps, port=0)
+        try:
+            port = server.server_address[1]
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/feishu?code=one-time-code&state={state}",
+            ) as response:
+                page = response.read().decode()
+            assert response.status == 200
+            assert "one-time-code" not in page and "u-user" not in page
+        finally:
+            stop_loopback(server)
         assert default_store().match(
             message_id="om_live", chat_id="oc_1", chat_type="dm", platform="feishu",
         ).open_id == OPEN_ID

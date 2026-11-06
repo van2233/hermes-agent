@@ -21,3 +21,5 @@ def register(ctx):
     )
     ctx.register_hook("pre_gateway_dispatch", on_pre_gateway_dispatch)
     ctx.register_hook("transform_llm_output", on_transform_llm_output)
+    from plugins.feishu_base_export.callback import maybe_start
+    maybe_start()

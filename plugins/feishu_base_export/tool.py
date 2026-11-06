@@ -22,10 +22,9 @@ SCHEMA = {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["export_xlsx", "revoke", "chart_png", "chart_pdf"],
+                "enum": ["export_xlsx", "revoke", "check", "chart_png", "chart_pdf"],
             },
             "base_token": {"type": "string", "description": "Base token, at most 27 letters or digits."},
-            "callback_url": {"type": "string", "description": "Full OAuth redirect URL pasted by the same user."},
         },
         "required": ["action"],
     },
