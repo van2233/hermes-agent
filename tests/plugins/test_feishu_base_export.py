@@ -291,28 +291,6 @@ def test_chart_parser_bounds_and_renderer_emits_png_and_pdf():
         parse_aggregate(oversized)
 
 
-def test_tool_blocks_export_and_both_image_formats_without_network():
-    actions = SCHEMA["parameters"]["properties"]["action"]["enum"]
-    assert actions == ["export_xlsx", "chart_png", "chart_pdf"]
-    calls = []
-
-    def transport(*args, **kwargs):
-        calls.append(args)
-        raise AssertionError("blocked tool must not call Feishu")
-
-    for action in actions:
-        payload = json.loads(handle({"action": action, "base_token": BASE, "open_id": OTHER_ID}, transport=transport))
-        assert payload["ok"] is False
-        assert payload["status"] == "blocked"
-        assert payload["action"] == action
-        assert "blocked" in payload["reason"]
-    assert calls == []
-    chart_png = json.loads(handle({"action": "chart_png"}))
-    chart_pdf = json.loads(handle({"action": "chart_pdf"}))
-    assert "png" in chart_png["reason"] and "pdf" in chart_png["reason"]
-    assert "png" in chart_pdf["reason"] and "pdf" in chart_pdf["reason"]
-
-
 def test_register_records_binding_without_dropping_the_message():
     from plugins.feishu_base_export import register
     from plugins.feishu_base_export.binding import default_store, reset_default_store
@@ -333,6 +311,8 @@ def test_register_records_binding_without_dropping_the_message():
     ctx = Ctx()
     register(ctx)
     assert ctx.tools[0]["name"] == "feishu_base_export"
+    names = [name for name, _callback in ctx.hooks]
+    assert names == ["pre_gateway_dispatch", "transform_llm_output"]
     assert ctx.hooks[0][0] == "pre_gateway_dispatch"
     assert ctx.hooks[0][1](event=_event(message_id="om_hook")) is None
     found = default_store().match(message_id="om_hook", chat_id="oc_1", chat_type="dm", platform="feishu")

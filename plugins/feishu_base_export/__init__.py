@@ -1,14 +1,14 @@
 """Opt-in Feishu Base export plugin.
 
-Live user-token acquisition, live chart fetch, and outbound file delivery stay
-blocked. See docs/superpowers/specs/2026-11-06-feishu-base-export-design.md.
+Excel export runs when the DM binding and deploy settings are present.
+Live chart fetch stays blocked. See the 2026-11-06 design note.
 """
 
 from __future__ import annotations
 
 
 def register(ctx):
-    from plugins.feishu_base_export.binding import on_pre_gateway_dispatch
+    from plugins.feishu_base_export.hooks import on_pre_gateway_dispatch, on_transform_llm_output
     from plugins.feishu_base_export.tool import SCHEMA, handle
 
     ctx.register_tool(
@@ -20,3 +20,4 @@ def register(ctx):
         emoji="📊",
     )
     ctx.register_hook("pre_gateway_dispatch", on_pre_gateway_dispatch)
+    ctx.register_hook("transform_llm_output", on_transform_llm_output)

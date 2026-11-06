@@ -39,6 +39,14 @@ class TokenStore:
         path.write_bytes(wrapped)
         os.chmod(path, 0o600)
 
-    def load(self, open_id: str) -> dict:
-        wrapped = self.path_for(open_id).read_bytes()
+    def load(self, open_id: str) -> dict | None:
+        path = self.path_for(open_id)
+        if not path.is_file():
+            return None
+        wrapped = path.read_bytes()
         return json.loads(self._protector.unprotect(wrapped).decode("utf-8"))
+
+    def delete(self, open_id: str) -> None:
+        path = self.path_for(open_id)
+        if path.is_file():
+            path.unlink()

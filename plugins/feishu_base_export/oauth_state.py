@@ -35,6 +35,23 @@ class StateStore:
             self._items[state] = (record, now + ttl_seconds)
         return state
 
+    def peek(self, state: str, *, now: float) -> StateRecord | None:
+        with self._lock:
+            item = self._items.get(state)
+        if item is None:
+            return None
+        record, expires_at = item
+        if now >= expires_at:
+            return None
+        return record
+
+    def challenge_of(self, state: str) -> str | None:
+        with self._lock:
+            item = self._items.get(state)
+        if item is None:
+            return None
+        return item[0].challenge
+
     def consume(self, state: str, *, now: float) -> StateRecord | None:
         with self._lock:
             item = self._items.pop(state, None)

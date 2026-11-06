@@ -1,6 +1,6 @@
 # 飞书 Base 导出插件设计（2026-11-06）
 
-状态：review 分支上的失败关闭实现。不是本机部署，也不是业务已打通。
+状态：review 分支第二轮。配置齐全时 Excel 授权和导出代码会运行；图表实取仍 blocked。不是本机部署，也不是飞书实机通过。
 
 ## 目标
 
@@ -8,9 +8,11 @@
 
 ## 这一轮实际做到的边界
 
-插件 `plugins/feishu_base_export/` 已注册三个动作：`export_xlsx`、`chart_png`、`chart_pdf`。三个动作目前都返回 `status=blocked`，不发网络请求，不写文件，不把路径交给模型。旁边有已测过的纯函数：身份绑定、一次性 opaque state、PKCE、token 文件位置、URL 主机限制、xlsx 压缩包检查、导出请求组装、合成数据画 PNG/PDF。
+`export_xlsx` 在私聊绑定存在、并且 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`redirect_uri` 都有值时，会发出授权链接、用回调里的 code 换 token、核对同一应用的 `open_id`、按需刷新，再调用官方 Drive 导出。缺任何一项返回 `setup-required`，不会无条件 blocked。`revoke` 删除该 open_id 的本地 token。`chart_png` / `chart_pdf` 仍 blocked。
 
-完整私聊回文件 **未 ready**。
+私聊文件不改核心。网关把最终回复里的 `MEDIA:` 发给当前消息的 `chat_id`。自动补附件只信任 `text_to_speech` 和 `image_generate`（`gateway/run.py` 的 `_AUTO_APPEND_MEDIA_TOOL_NAMES`）。插件用 `transform_llm_output` 去掉模型写的其它 `MEDIA:`，再写上本轮唯一路径。发送者 open_id 只来自原始事件；工具参数里的 open_id 被忽略。会话 message_id 对不上绑定就拒绝。
+
+机主和同一 OS 用户的 shell 仍能读到进程能读的文件。token 在 `mcp-tokens/` 下，读工具会拒绝，这不是强沙箱。非 Windows 不落盘明文，DPAPI 只在 Windows 调用。
 
 ## 证据，含上轮需要改口的地方
 
@@ -57,7 +59,7 @@ PNG 和 PDF 没有从工具枚举里拿掉。`chart_png` 与 `chart_pdf` 都返�
 - 只允许 `https://open.feishu.cn` 与 `https://open.larksuite.com`，端口仅 443。拒绝 userinfo、IP 字面量、其他主机。3xx 直接失败，不跟随后续请求。
 - 错误文本先按调用方传入的 secret 替换，再去掉 Bearer 和 `refresh_token=` / `code=` 一类参数。`job_error_msg` 不回传，避免把 token 带回模型。
 
-实现在 `bitable_xlsx.py`（文件名避开仓库 `.gitignore` 的 `export*`）。工具本身还不调用它。
+实现在 `bitable_xlsx.py`（文件名避开仓库 `.gitignore` 的 `export*`）。`export_xlsx` 在 token 可用时调用它。没有监听新端口。
 
 ## 威胁边界（不承诺的部分）
 
