@@ -14,6 +14,8 @@
 
 机主和同一 OS 用户的 shell 仍能读到进程能读的文件。token 在 `mcp-tokens/` 下，读工具会拒绝，这不是强沙箱。非 Windows 不落盘明文，DPAPI 只在 Windows 调用。
 
+对照本机 `a992c8f1` 的四个文件（未提交进仓库）：`register_tool` / `register_hook` 参数没变，`pre_gateway_dispatch` 和 `transform_llm_output` 仍在，工具线程仍经 `propagate_context_to_thread` 提交。`registry.dispatch` 仍是 `handler(args, **kwargs)`，多出来的 `task_id` / `session_id` / `user_task` 不能当飞书身份。本地 `model_tools.py` 在进 handler 前多了一道 capability 检查：结果是 `None` 或 `allowed` 为假就拒绝。插件不能把自己标成 read_only。`agent/runtime_capability.py` 不在这四份源码里，所以还不能证明这道门会放行 `feishu_base_export`。不把那份本地补丁抄进插件。
+
 ## 证据，含上轮需要改口的地方
 
 基线提交 `5eb99eb2844b22ebb723711b8e6a0bbb80bb5f04`。`pyproject.toml` 版本是 `0.21.2`。提交时间 2026-09-14。仓库没有这个提交的 git tag。本机标签「2026.9.11」和提交时间不一致，只记作边界，不把两者说成同一个发布瞬间。

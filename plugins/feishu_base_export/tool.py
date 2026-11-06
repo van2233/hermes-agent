@@ -32,6 +32,8 @@ SCHEMA = {
 
 
 def handle(args, **kwargs) -> str:
+    # task_id/session_id/user_task come from the host dispatcher on some builds.
+    # They are not the Feishu sender. Only _deps is a test injection.
     action = str((args or {}).get("action") or "")
     if action in CHART_ACTIONS:
         return json.dumps({
