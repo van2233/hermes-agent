@@ -26,6 +26,40 @@ def _config(**overrides):
     return RuntimeConfig(**values)
 
 
+def test_local_http_redirect_is_same_machine_only(tmp_path):
+    local = _config(redirect_uri="http://127.0.0.1:8766/feishu/oauth/callback", listen_port=8766)
+    report = describe_setup(local)
+    assert report["listening"] is False and report["auth_ready"] is False
+    assert report["oauth_local_ready"] is True and report["oauth_remote_ready"] is False
+    assert describe_setup(_config())["oauth_remote_ready"] is True
+    assert "redirect_uri_https" in _config(redirect_uri="http://localhost:8766/feishu/oauth/callback").callback_problems()
+
+
+def test_windows_offline_verify_stays_inside_an_empty_directory(tmp_path, capsys):
+    from plugins.feishu_base_export.windows_offline_verify import main
+
+    live = tmp_path / "live"
+    live.mkdir()
+    (live / "config.yaml").write_text("not-opened", encoding="utf-8")
+    assert main(["--work-dir", str(live)]) == 1
+    assert not (live / "plugins").exists()
+    assert (live / "config.yaml").read_text(encoding="utf-8") == "not-opened"
+
+    work = tmp_path / "work"
+    code = main(["--work-dir", str(work)])
+    captured = capsys.readouterr().out
+    assert code == 2
+    assert "result=NOT_A_PASS" in captured
+    assert "dpapi=windows_only" in captured
+    assert "dry_run=true" in captured
+    assert "listening=false" in captured
+    assert "auth_ready=false" in captured
+    assert "charts=blocked" in captured
+    assert not (work / "config.yaml").exists()
+    assert not (work / ".env").exists()
+    assert (work / "plugins" / "feishu_base_export" / "windows_offline_verify.py").is_file()
+
+
 def test_check_and_public_bind_do_not_listen(tmp_path):
     deps = _deps(lambda *a, **k: None, output=tmp_path, config=_config())
     report = json.loads(handle({"action": "check"}, _deps=deps))

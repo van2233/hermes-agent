@@ -7,7 +7,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from plugins.feishu_base_export.config import loopback_host
+from plugins.feishu_base_export.config import loopback_host, redirect_class
 from plugins.feishu_base_export.oauth_flow import OAuthError, exchange_code, user_open_id
 from plugins.feishu_base_export.service import save_issued
 
@@ -19,12 +19,17 @@ _SERVERS: list[ThreadingHTTPServer] = []
 
 def describe_setup(config) -> dict:
     """Report readiness. This function does not bind a socket."""
+    kind = redirect_class(config.redirect_uri, config.listen_port)
+    problems = config.callback_problems()
     return {
         "ok": True,
         "status": "dry-run",
         "listening": False,
-        "missing": config.callback_problems(),
+        "missing": problems,
         "listen_host": config.listen_host,
+        "oauth_local_ready": kind == "local" and not problems,
+        "oauth_remote_ready": kind == "remote" and not problems,
+        "auth_ready": False,
     }
 
 

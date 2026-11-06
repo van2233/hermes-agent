@@ -1,8 +1,8 @@
-"""Copy this plugin into an operator-supplied profile home. Dry-run is the default.
+"""Copy this plugin's source files into an operator-supplied directory.
 
-The path must come from `hermes config path` / `hermes profile` for the profile
-that should receive the plugin. This script does not guess HERMES_HOME and does
-not read config.yaml or .env.
+Dry-run is the default. This script never reads or writes config.yaml, .env,
+or runtime-policy.json. Enabling the plugin and setting redirect_uri are
+separate official commands: `hermes plugins enable` and `hermes config set`.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ def plan_copy(profile_home: Path, source: Path | None = None) -> list[Path]:
     for path in sorted(root.iterdir()):
         if path.name.startswith(".") or path.name in _SKIP or path.suffix == ".pyc":
             continue
-        if path.suffix not in {".py", ".yaml", ".yml", ".md"}:
+        if path.suffix not in {".py", ".yaml", ".yml", ".md", ".txt"}:
             continue
         names.append(path)
     return names

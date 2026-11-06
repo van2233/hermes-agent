@@ -1,12 +1,17 @@
 name: feishu-base-export
-version: 0.1.0
+version: 0.1.1
 description: >
-  Opt-in per-user Feishu Base export helper. Does not enable itself.
-  Live OAuth, live chart fetch, and sending files back to Feishu are blocked
-  until those transports are proven and the local tool-chain diff is reviewed.
+  Opt-in per-user Feishu Base xlsx export. Does not enable itself.
+  The callback listens only after callback settings are complete.
+  chart_png and chart_pdf stay blocked.
 author: fork-review
 kind: standalone
 provides_tools:
   - feishu_base_export
+provides_hooks:
+  - pre_gateway_dispatch
+  - transform_llm_output
 hooks:
   - pre_gateway_dispatch
+  - transform_llm_output
+python_dependencies: []

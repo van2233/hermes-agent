@@ -6,7 +6,8 @@ import ipaddress
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-DEFAULT_SCOPES = "offline_access drive:export:readonly docs:document:export"
+DEFAULT_SCOPES = "offline_access drive:export:readonly"
+CALLBACK_PATH = "/feishu/oauth/callback"
 
 
 @dataclass(frozen=True)
@@ -33,8 +34,11 @@ class RuntimeConfig:
 
     def callback_problems(self) -> list[str]:
         problems = self.missing()
-        if self.redirect_uri and not public_https(self.redirect_uri):
+        kind = redirect_class(self.redirect_uri, self.listen_port)
+        if self.redirect_uri and not kind:
             problems.append("redirect_uri_https")
+        if kind == "local" and self.listen_host != "127.0.0.1":
+            problems.append("listen_redirect_mismatch")
         if not loopback_host(self.listen_host):
             problems.append("listen_host_loopback")
         if not isinstance(self.listen_port, int) or not 1 <= self.listen_port <= 65535:
@@ -52,6 +56,20 @@ def loopback_host(host: str) -> bool:
         return ipaddress.ip_address(value).is_loopback
     except ValueError:
         return False
+
+
+def redirect_class(uri: str, listen_port: int) -> str:
+    """``local`` is same-machine HTTP. ``remote`` is a public HTTPS name. Otherwise empty."""
+    parts = urlsplit(uri or "")
+    if parts.username or parts.password or parts.query or parts.fragment:
+        return ""
+    if parts.scheme == "http" and (parts.hostname or "").lower() == "127.0.0.1":
+        if parts.port == listen_port and parts.path == CALLBACK_PATH:
+            return "local"
+        return ""
+    if public_https(uri):
+        return "remote"
+    return ""
 
 
 def public_https(uri: str) -> bool:

@@ -43,7 +43,7 @@ pin 上 `tools/thread_context.py::propagate_context_to_thread` 会 `contextvars.
 - `GET https://open.feishu.cn/open-apis/authen/v1/user_info` 的 `open_id` 说明是「用户在应用内的唯一标识」。示例是 `ou-...`。适配器注释里的事件 id 是 `ou_`。绑定同时接受这两种前缀，并拒绝 `u_` / `on_`。
 - 官方「Device Authorization Grant」文档出现在一键创建应用（`registerApp`）流程，产物是应用凭证，不是「已有自建 bot 用同一应用给同事换 user_access_token」。第三方仓库里的 `accounts.feishu.cn/oauth/v1/device_authorization` 没有被上述用户令牌文档列为 grant。CLI 实测设备登录成功，不能当成这个 bot 应用的官方设备码接口。
 
-因此：不实现设备码轮询，不借用 CLI 的 client，不刮取 CLI 凭据，不监听公网，不建隧道。默认只绑定 `127.0.0.1`。`redirect_uri` 必须是管理员已经在飞书登记的 HTTPS 地址，主机名不能是 loopback、`.local` 或 IP。没有这份配置就保持 `setup-required`。state 用 `secrets.token_urlsafe`，服务端保存 open_id 和 PKCE verifier；state 字符串本身不含 open_id。回调响应和日志不回显 code。
+因此：不实现设备码轮询，不借用 CLI 的 client，不刮取 CLI 凭据，不监听公网，不建隧道。默认只绑定 `127.0.0.1:8766`，路径固定 `/feishu/oauth/callback`。同一台机器的浏览器可以使用控制台已允许的 `http://127.0.0.1:8766/feishu/oauth/callback`。远程同事仍要操作员自己已有的 HTTPS 反代，主机名不能是 loopback、`.local` 或 IP。没有这份配置就保持 `setup-required`，离线验证不得把认证写成已就绪。state 用 `secrets.token_urlsafe`，服务端保存 open_id 和 PKCE verifier；state 字符串本身不含 open_id。回调响应和日志不回显 code。
 
 ### 图表 transport 未当成已验证
 
@@ -75,4 +75,4 @@ DPAPI 只在 `sys.platform == win32` 时调用 `CryptProtectData`。其他平台
 
 不要在用户 Windows 安装目录上 `git pull` 这个 fork。那边的 origin 仍是 NousResearch 上游，拉取会盖住安装树和已有 dirty skills。只读核查：`hermes config path` 打印 `C:\Users\21292\AppData\Local\hermes\config.yaml`，`hermes config env-path` 打印同目录 `.env`，两份文件都没有打开。安装根是 `C:\Users\21292\AppData\Local\hermes\hermes-agent`，HEAD 仍是 `a992c8f1c47354748a9cfa669905bf58e50ee9c2`。Gateway `list/default` 的 current PID 是 51168，计划任务 `Hermes_Gateway` 已注册。没有证据证明这个进程的 `HERMES_HOME` 等于 CLI 的 config 目录，不能把两者写成已经核对一致。部署脚本必须由操作员显式传入目标 profile 路径，不能猜 `~\.hermes`，也不能写到另一个 profile。本轮没有安装插件、没有改配置、没有读 secret、没有跑策略、没有监听端口。
 
-`hermes_cli/plugins.py`、`tools/registry.py`、`model_tools.py`、`agent/tool_executor.py` 和 `agent/runtime_capability.py` 已对照过，这五份路径的工作树 status 仍为空。对照结果不改变上面的路径结论：插件仍不拷贝，配置仍不改，策略仍不跑。操作员以后只能把官方命令查到的那个 profile 路径显式传给 `prepare_profile.py`。
+`hermes_cli/plugins.py`、`tools/registry.py`、`model_tools.py`、`agent/tool_executor.py` 和 `agent/runtime_capability.py` 已对照过，这五份路径的工作树 status 仍为空。56982 字节的包已在 Windows 解到桌面校验目录。定向 DPAPI 测试 1 passed、14 deselected、退出码 0。对 CLI profile 目录的 `prepare_profile.py` 不带 `--apply` 为 `dry_run=true`、`files=25`、退出码 0。`plugins.entries.feishu-base-export.enabled` 与 `settings.redirect_uri` 均为 Config key not set。`plugins list --plain` 只有未启用的 bundled `feishu-platform`，没有本插件；这不能说明飞书消息不健康。default gateway PID 51168 仍在运行，其 home 仍未由官方命令证明。拷贝脚本只新增源码；启用和回调必须走 `hermes plugins enable` 与 `hermes config set`。回调 URL 仍缺，不能上线。
