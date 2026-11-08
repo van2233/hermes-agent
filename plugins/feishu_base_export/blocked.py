@@ -11,9 +11,8 @@ EXPORT_BLOCKED = (
 )
 
 CHART_BLOCKED = (
-    "blocked: png and pdf were not fetched from Feishu and no image file was written. "
-    "Official server-docs list dashboards with GET /open-apis/bitable/v1/apps/:app_token/dashboards "
-    "and do not document an aggregate-data scope. The CLI skill path "
-    "GET /open-apis/base/v3/bases/:base_token/dashboards/blocks/:block_id/data "
-    "is not a verified transport. Both png and pdf stay blocked."
+    "未接通: png 和 pdf 没有从飞书拉取。官方 server-docs 只有仪表盘列表 "
+    "GET /open-apis/bitable/v1/apps/:app_token/dashboards，没有已确认的聚合数据接口和 scope。"
+    "CLI 技能里的 GET /open-apis/base/v3/bases/:base_token/dashboards/blocks/:block_id/data "
+    "不能当作已接通。Excel 导出不依赖这条路径。"
 )

@@ -21,13 +21,10 @@ from hermes_constants import get_hermes_home
 from plugins.feishu_base_export.binding import BindingStore, TurnBinding, consider_event
 from plugins.feishu_base_export.chart_draw import render_chart, render_pixels
 from plugins.feishu_base_export.chart_data import EmptyAggregate, PayloadBoundsError, parse_aggregate
-from plugins.feishu_base_export.dpapi import DpapiUnavailable, WindowsDpapiProtector, production_protector
 from plugins.feishu_base_export.bitable_xlsx import ExportError, export_bitable_xlsx
 from plugins.feishu_base_export.http_guard import UrlRejected, parse_official_https
 from plugins.feishu_base_export.identity import extract_sender_open_id, is_app_open_id
-from plugins.feishu_base_export.oauth_state import StateStore, pkce_pair
 from plugins.feishu_base_export.redact import redact
-from plugins.feishu_base_export.token_store import LoopProtector, TokenStore
 from plugins.feishu_base_export.tool import SCHEMA, handle
 from plugins.feishu_base_export.xlsx_safe import UnsafeFile, assert_safe_xlsx
 
@@ -92,50 +89,6 @@ def test_concurrent_bindings_do_not_cross():
         thread.join()
     assert store.match(message_id="om_a", chat_id="oc_a", chat_type="dm", platform="feishu").open_id == OPEN_ID
     assert store.match(message_id="om_b", chat_id="oc_b", chat_type="dm", platform="feishu").open_id == OTHER_ID
-
-
-def test_oauth_state_is_opaque_one_time_and_pkce_is_s256():
-    store = StateStore()
-    state = store.issue(open_id=OPEN_ID, now=1000)
-    assert OPEN_ID not in state
-    assert "secret" not in state.lower()
-    record = store.consume(state, now=1001)
-    assert record.open_id == OPEN_ID
-    assert store.consume(state, now=1002) is None
-    assert store.consume("missing", now=1002) is None
-    verifier, challenge = pkce_pair()
-    assert 43 <= len(verifier) <= 128
-    assert verifier != challenge
-    expired = store.issue(open_id=OPEN_ID, now=0, ttl_seconds=1)
-    assert store.consume(expired, now=5) is None
-
-
-def test_token_store_keeps_plaintext_out_of_the_mcp_tokens_file(tmp_path):
-    home = tmp_path / "home"
-    store = TokenStore(home, LoopProtector())
-    store.save(OPEN_ID, {"access_token": "u-secret-value", "refresh_token": "r-secret"})
-    path = store.path_for(OPEN_ID)
-    assert path.is_relative_to(home / "mcp-tokens" / "feishu-base-export")
-    assert OPEN_ID not in path.name
-    raw = path.read_bytes()
-    assert b"u-secret-value" not in raw
-    assert store.load(OPEN_ID)["access_token"] == "u-secret-value"
-
-
-@pytest.mark.linux_only
-def test_posix_refuses_to_pretend_dpapi_worked():
-    with pytest.raises(DpapiUnavailable):
-        WindowsDpapiProtector().protect(b"token")
-    with pytest.raises(DpapiUnavailable):
-        production_protector()
-
-
-@pytest.mark.windows_only
-def test_windows_dpapi_roundtrip_is_real_cryptprotect():
-    protector = production_protector()
-    blob = protector.protect(b"token-bytes")
-    assert blob != b"token-bytes"
-    assert protector.unprotect(blob) == b"token-bytes"
 
 
 def test_read_tool_blocks_token_file_and_names_the_terminal_gap():
@@ -228,7 +181,7 @@ def test_export_omits_sub_id_refuses_redirects_and_redacts_tokens():
         }}}).encode()),
         (200, good),
     ])
-    data = export_bitable_xlsx(user_token="u-secret-value", base_token=BASE, transport=script, sleep=lambda _s: None)
+    data = export_bitable_xlsx(access_token="u-secret-value", base_token=BASE, transport=script, sleep=lambda _s: None)
     assert data[:2] == b"PK"
     assert script.calls[0][0] == "POST"
     assert script.calls[0][2] == "u-secret-value"
@@ -240,7 +193,7 @@ def test_export_omits_sub_id_refuses_redirects_and_redacts_tokens():
 
     redirected = _Script([(302, "https://127.0.0.1/steal")])
     with pytest.raises(ExportError) as caught:
-        export_bitable_xlsx(user_token="u-secret-value", base_token=BASE, transport=redirected, sleep=lambda _s: None)
+        export_bitable_xlsx(access_token="u-secret-value", base_token=BASE, transport=redirected, sleep=lambda _s: None)
     assert "u-secret-value" not in str(caught.value)
     assert len(redirected.calls) == 1
 
@@ -248,7 +201,7 @@ def test_export_omits_sub_id_refuses_redirects_and_redacts_tokens():
         raise RuntimeError(f"Bearer {user_token} code=abc refresh_token=r1")
 
     with pytest.raises(ExportError) as caught:
-        export_bitable_xlsx(user_token="u-secret-value", base_token=BASE, transport=explode, sleep=lambda _s: None)
+        export_bitable_xlsx(access_token="u-secret-value", base_token=BASE, transport=explode, sleep=lambda _s: None)
     text = str(caught.value)
     assert "u-secret-value" not in text
     assert "refresh_token=r1" not in text
@@ -261,7 +214,7 @@ def test_permission_failure_does_not_download():
         (200, json.dumps({"code": 0, "data": {"result": {"job_status": 110, "job_error_msg": "no perm u-secret-value"}}}).encode()),
     ])
     with pytest.raises(ExportError) as caught:
-        export_bitable_xlsx(user_token="u-secret-value", base_token=BASE, transport=script, sleep=lambda _s: None)
+        export_bitable_xlsx(access_token="u-secret-value", base_token=BASE, transport=script, sleep=lambda _s: None)
     assert len(script.calls) == 2
     assert "u-secret-value" not in str(caught.value)
     assert "110" in str(caught.value)

@@ -1,86 +1,53 @@
-"""Mocked authorization-code export and private-DM delivery. Not a live Feishu call."""
+"""Bot-identity export with a mocked tenant token. Not a live Feishu call."""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from plugins.feishu_base_export.binding import BindingStore, consider_event
+from plugins.feishu_base_export.config import RuntimeConfig
+from plugins.feishu_base_export.delivery import transform_response
+from plugins.feishu_base_export.service import Deps
 from plugins.feishu_base_export.tool import SCHEMA, handle
-from tests.plugins.test_feishu_base_export import BASE, OPEN_ID, OTHER_ID, _event, _xlsx
+from tests.plugins.test_feishu_base_export import BASE, OPEN_ID, _event, _xlsx
 
-def test_chart_actions_stay_blocked_and_do_not_call_feishu():
+TARGET = "E6OpbISaeaZAVRsojtacOU9rnjf"
+
+
+def test_chart_actions_stay_unconnected():
     actions = SCHEMA["parameters"]["properties"]["action"]["enum"]
-    assert "export_xlsx" in actions and "revoke" in actions
-    assert "chart_png" in actions and "chart_pdf" in actions
-    calls = []
-
-    def transport(*args, **kwargs):
-        calls.append(args)
-        raise AssertionError("chart fetch must not call Feishu")
-
+    assert "export_xlsx" in actions and "chart_png" in actions and "chart_pdf" in actions
     for action in ("chart_png", "chart_pdf"):
-        payload = json.loads(handle({"action": action, "open_id": OTHER_ID}, _deps=_deps(transport)))
+        payload = json.loads(handle({"action": action, "open_id": "ou_forged"}))
         assert payload["status"] == "blocked"
         assert "png" in payload["reason"] and "pdf" in payload["reason"]
-    assert calls == []
+        assert "未接通" in payload["reason"]
 
 
-def test_export_requires_setup_then_auth_then_writes_only_the_caller_file(tmp_path):
-    from plugins.feishu_base_export.config import RuntimeConfig
-    from plugins.feishu_base_export.delivery import reset_ledger, transform_response
-    from plugins.feishu_base_export.hooks import on_transform_llm_output
-
+def test_bot_export_uses_the_configured_base_and_the_current_dm(tmp_path):
     store = BindingStore()
     consider_event(_event(), store)
-    session = {"message_id": "om_1", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"}
-    empty = _deps(lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")), store, session, tmp_path, RuntimeConfig())
-    missing = json.loads(handle({"action": "export_xlsx", "open_id": OTHER_ID, "base_token": BASE}, _deps=empty))
+    empty = _deps(lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("network")), store, tmp_path, RuntimeConfig())
+    missing = json.loads(handle({"action": "export_xlsx", "base_token": "https://evil.example/base"}, _deps=empty))
     assert missing["status"] == "setup-required"
-    assert "redirect_uri" in missing["missing"]
-    assert "FEISHU_APP_ID" in missing["missing"]
+    assert "base_token" in missing["missing"]
 
-    config = RuntimeConfig(
-        app_id="cli_app", app_secret="app-secret-value",
-        redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
-    )
-    reset_ledger()
-    deps = _deps(lambda *a, **k: (_ for _ in ()).throw(AssertionError("network")), store, session, tmp_path, config)
-    need = json.loads(handle(
-        {"action": "export_xlsx", "base_token": BASE, "open_id": OTHER_ID},
-        _deps=deps,
-    ))
-    assert need["status"] == "need_auth"
-    assert need["authorize_url"].startswith("https://accounts.feishu.cn/open-apis/authen/v1/authorize?")
-    assert "app-secret-value" not in need["authorize_url"]
-    assert OPEN_ID not in need["authorize_url"]
-    assert "code_challenge_method=S256" in need["authorize_url"]
-    forced = on_transform_llm_output("模型没贴链接", message_id="om_1")
-    assert need["authorize_url"] in forced
-    assert "MEDIA:" not in forced
-
-    state = need["authorize_url"].split("state=")[1].split("&")[0]
-    from urllib.parse import unquote
-    state = unquote(state)
-    good = _xlsx()
     calls = []
+    good = _xlsx()
 
-    def transport(method, url, user_token, body):
-        calls.append((method, url, user_token, body))
-        if url.endswith("/oauth/token"):
-            assert body["code_verifier"]
+    def transport(method, url, token, body):
+        calls.append((method, url, token, body))
+        if url.endswith("/tenant_access_token/internal"):
+            assert body["app_id"] == "cli_app"
+            assert "grant_type" not in body
             return SimpleNamespace(status=200, body=json.dumps({
-                "code": 0, "access_token": "u-user", "refresh_token": "r-user",
-                "expires_in": 7200, "refresh_token_expires_in": 86400, "scope": "drive:export:readonly",
+                "code": 0, "tenant_access_token": "t-bot", "expire": 7200,
             }).encode())
-        if url.endswith("/user_info"):
-            assert user_token == "u-user"
-            return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"open_id": OPEN_ID}}).encode())
         if method == "POST":
-            assert user_token == "u-user"
-            assert body.get("type") == "bitable" and "sub_id" not in body
+            assert token == "t-bot"
+            assert body["token"] == TARGET and body["type"] == "bitable" and "sub_id" not in body
             return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"ticket": "77"}}).encode())
         if "file/" in url:
             return SimpleNamespace(status=200, body=good)
@@ -88,117 +55,55 @@ def test_export_requires_setup_then_auth_then_writes_only_the_caller_file(tmp_pa
             "job_status": 0, "file_token": "boxcnxe5OdjlAkNgSNdsJvabcef", "file_size": len(good),
         }}}).encode())
 
-    from plugins.feishu_base_export.callback import handle_callback
-    deps.transport = transport
-    status, body = handle_callback({"code": "one-time-code", "state": state}, deps=deps, now=deps.now)
-    assert status == 200 and "one-time-code" not in body and "u-user" not in body
-    ready = json.loads(handle(
-        {"action": "export_xlsx", "base_token": BASE, "callback_url": "https://cb.example.com/feishu?code=one-time-code&state=" + state, "open_id": OTHER_ID},
-        _deps=deps,
-    ))
-    assert ready["status"] == "ready"
-    assert "one-time-code" not in json.dumps(ready)
-    assert "u-user" not in json.dumps(ready)
+    config = RuntimeConfig(app_id="cli_app", app_secret="app-secret-value", base_token=TARGET)
+    deps = _deps(transport, store, tmp_path, config)
+    rejected = json.loads(handle({"action": "export_xlsx", "base_token": BASE, "open_id": "ou_forged"}, _deps=deps))
+    assert rejected["status"] == "rejected"
+    assert calls == []
+    ready = json.loads(handle({"action": "export_xlsx", "chat_id": "oc_other"}, _deps=deps))
+    assert ready["status"] == "ready" and ready["delivery"] == "private-dm"
+    assert "t-bot" not in json.dumps(ready) and "app-secret-value" not in json.dumps(ready)
     written = list(tmp_path.glob("*.xlsx"))
     assert len(written) == 1 and written[0].read_bytes().startswith(b"PK")
-    delivered = transform_response(f"拿走 MEDIA:{tmp_path / 'other.xlsx'}", message_id="om_1")
-    assert f"MEDIA:{written[0]}" in delivered
-    assert "other.xlsx" not in delivered
-    assert calls[0][1].endswith("/oauth/token")
+    delivered = transform_response("MEDIA:/tmp/other.xlsx", message_id="om_1")
+    assert f"MEDIA:{written[0]}" in delivered and "other.xlsx" not in delivered
+    assert calls[0][1].endswith("/tenant_access_token/internal")
+    assert not any("/authen/" in call[1] for call in calls)
 
 
-def test_oauth_rejects_other_open_id_and_revoke_drops_the_token(tmp_path):
-    from plugins.feishu_base_export.config import RuntimeConfig
-
+def test_table_permission_does_not_fall_back_to_a_user_token(tmp_path):
     store = BindingStore()
-    consider_event(_event(message_id="om_2"), store)
-    session = {"message_id": "om_2", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"}
-    config = RuntimeConfig(
-        app_id="cli_app", app_secret="app-secret-value",
-        redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
-    )
-    deps = _deps(lambda *a, **k: (_ for _ in ()).throw(AssertionError("no")), store, session, tmp_path, config)
-    need = json.loads(handle({"action": "export_xlsx"}, _deps=deps))
-    state = __import__("urllib.parse", fromlist=["unquote"]).unquote(need["authorize_url"].split("state=")[1].split("&")[0])
+    consider_event(_event(), store)
+    calls = []
 
-    def transport(method, url, user_token, body):
-        if url.endswith("/oauth/token"):
+    def transport(method, url, token, body):
+        calls.append(url)
+        if url.endswith("/tenant_access_token/internal"):
             return SimpleNamespace(status=200, body=json.dumps({
-                "code": 0, "access_token": "u-other", "refresh_token": "r-other",
-                "expires_in": 100, "refresh_token_expires_in": 100,
-            }).encode())
-        return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"open_id": OTHER_ID}}).encode())
-
-    from plugins.feishu_base_export.callback import handle_callback
-    deps.transport = transport
-    status, body = handle_callback({"code": "abc", "state": state}, deps=deps, now=deps.now)
-    assert status == 400 and body == "授权失败" and "abc" not in body and "u-other" not in body
-    assert deps.tokens.load(OPEN_ID) is None
-    deps.tokens.save(OPEN_ID, {"access_token": "u-user", "refresh_token": "r-user", "expires_at": 10**12})
-    revoked = json.loads(handle({"action": "revoke"}, _deps=deps))
-    assert revoked["status"] == "revoked"
-    assert "不是飞书" in revoked["reason"]
-    assert deps.tokens.load(OPEN_ID) is None
-
-
-def test_refresh_replaces_single_use_token_and_private_url_is_rejected(tmp_path):
-    from plugins.feishu_base_export.config import RuntimeConfig
-    from plugins.feishu_base_export.http_guard import UrlRejected, guarded_request
-
-    store = BindingStore()
-    consider_event(_event(message_id="om_3"), store)
-    session = {"message_id": "om_3", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"}
-    config = RuntimeConfig(
-        app_id="cli_app", app_secret="app-secret-value",
-        redirect_uri="https://cb.example.com/feishu", callback_enabled=True,
-    )
-    good = _xlsx()
-    seen = []
-
-    def transport(method, url, user_token, body):
-        seen.append((url, user_token, body))
-        if url.endswith("/oauth/token"):
-            assert body["grant_type"] == "refresh_token"
-            assert body["refresh_token"] == "r-old"
-            return SimpleNamespace(status=200, body=json.dumps({
-                "code": 0, "access_token": "u-new", "refresh_token": "r-new",
-                "expires_in": 7200, "refresh_token_expires_in": 86400,
+                "code": 0, "tenant_access_token": "t-bot",
             }).encode())
         if method == "POST":
-            assert user_token == "u-new"
-            return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"ticket": "5"}}).encode())
-        if "file/" in url:
-            return SimpleNamespace(status=200, body=good)
+            return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"ticket": "7705632562430135490"}}).encode())
         return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"result": {
-            "job_status": 0, "file_token": "boxcnxe5OdjlAkNgSNdsJvabcef", "file_size": len(good),
+            "job_status": 3, "job_error_msg": "bitable_no_table_permission",
         }}}).encode())
 
-    deps = _deps(transport, store, session, tmp_path, config, now=5_000)
-    deps.tokens.save(OPEN_ID, {"access_token": "u-old", "refresh_token": "r-old", "expires_at": 1})
-    ready = json.loads(handle({"action": "export_xlsx", "base_token": BASE}, _deps=deps))
-    assert ready["status"] == "ready"
-    assert deps.tokens.load(OPEN_ID)["refresh_token"] == "r-new"
-    with pytest.raises(UrlRejected):
-        guarded_request("GET", "https://127.0.0.1/open-apis/drive/v1/export_tasks", "u-x", None)
+    config = RuntimeConfig(app_id="cli_app", app_secret="app-secret-value", base_token=TARGET)
+    payload = json.loads(handle({"action": "export_xlsx"}, _deps=_deps(transport, store, tmp_path, config)))
+    assert payload["status"] == "base-permission"
+    assert "不会改用用户身份" in payload["reason"]
+    assert not any("/authen/" in url or "oauth" in url for url in calls)
+    assert list(tmp_path.glob("*.xlsx")) == []
 
 
-def _deps(transport, store=None, session=None, output=None, config=None, now=1_700_000_000):
-    from pathlib import Path
-    from plugins.feishu_base_export.config import RuntimeConfig
-    from plugins.feishu_base_export.oauth_state import StateStore
-    from plugins.feishu_base_export.service import Deps
-    from plugins.feishu_base_export.token_store import LoopProtector, TokenStore
-
-    home = Path(output or "/tmp")
+def _deps(transport, store=None, output=None, config=None, session=None, now=1_700_000_000):
+    if session is None:
+        session = {"message_id": "om_1", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"}
     return Deps(
-        session=session or {"message_id": "om_1", "chat_id": "oc_1", "chat_type": "dm", "platform": "feishu"},
+        session=session,
         config=config if config is not None else RuntimeConfig(),
         transport=transport,
-        tokens=TokenStore(home / "secrets", LoopProtector()),
         bindings=store or BindingStore(),
-        states=StateStore(),
         now=now,
-        output_dir=home,
+        output_dir=Path(output or "/tmp"),
     )
-
-

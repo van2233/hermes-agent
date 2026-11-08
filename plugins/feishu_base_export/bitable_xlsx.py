@@ -24,19 +24,20 @@ class ExportError(RuntimeError):
     pass
 
 
-def export_bitable_xlsx(*, user_token: str, base_token: str, transport: Callable, host: str = "open.feishu.cn", sleep: Callable[[float], None] = lambda _seconds: None, attempts: int = 6) -> bytes:
-    if host not in OFFICIAL_HOSTS or not _BASE_TOKEN.fullmatch(base_token or "") or not user_token:
+def export_bitable_xlsx(*, access_token: str, base_token: str, transport: Callable, host: str = "open.feishu.cn", sleep: Callable[[float], None] = lambda _seconds: None, attempts: int = 6) -> bytes:
+    if host not in OFFICIAL_HOSTS or not _BASE_TOKEN.fullmatch(base_token or "") or not access_token:
         raise ExportError("rejected request")
     created = _json_call(
-        transport, user_token, "POST", f"https://{host}{_CREATE}",
+        transport, access_token, "POST", f"https://{host}{_CREATE}",
         {"file_extension": "xlsx", "token": base_token, "type": "bitable"},
     )
     ticket = str((created.get("data") or {}).get("ticket") or "")
     if created.get("code") != 0 or not _TICKET.fullmatch(ticket):
-        raise ExportError("export create failed")
+        detail = str(created.get("msg") or "")
+        raise ExportError(redact(f"export create failed: {detail}".strip(), secrets=[access_token]))
     for _ in range(attempts):
         polled = _json_call(
-            transport, user_token, "GET",
+            transport, access_token, "GET",
             f"https://{host}{_CREATE}/{ticket}?token={base_token}", None,
         )
         result = ((polled.get("data") or {}).get("result") or {}) if polled.get("code") == 0 else {}
@@ -45,18 +46,19 @@ def export_bitable_xlsx(*, user_token: str, base_token: str, transport: Callable
             sleep(1)
             continue
         if status != 0:
-            raise ExportError(f"job_status {status}")
-        return _download(transport, user_token, host, result)
+            detail = str(result.get("job_error_msg") or "")
+            raise ExportError(redact(f"export job failed: {status} {detail}".strip(), secrets=[access_token]))
+        return _download(transport, access_token, host, result)
     raise ExportError("export timed out")
 
 
-def _download(transport, user_token: str, host: str, result: dict) -> bytes:
+def _download(transport, access_token: str, host: str, result: dict) -> bytes:
     file_token = str(result.get("file_token") or "")
     file_size = int(result.get("file_size") or 0)
     if not _FILE_TOKEN.fullmatch(file_token) or file_size <= 0 or file_size > MAX_BYTES:
         raise ExportError("export file rejected")
     blob = _call(
-        transport, user_token, "GET",
+        transport, access_token, "GET",
         f"https://{host}{_CREATE}/file/{file_token}/download", None,
     )
     if len(blob) != file_size:
@@ -65,8 +67,8 @@ def _download(transport, user_token: str, host: str, result: dict) -> bytes:
     return blob
 
 
-def _json_call(transport, user_token: str, method: str, url: str, body) -> dict:
-    raw = _call(transport, user_token, method, url, body)
+def _json_call(transport, access_token: str, method: str, url: str, body) -> dict:
+    raw = _call(transport, access_token, method, url, body)
     try:
         parsed = json.loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
@@ -76,14 +78,14 @@ def _json_call(transport, user_token: str, method: str, url: str, body) -> dict:
     return parsed
 
 
-def _call(transport, user_token: str, method: str, url: str, body) -> bytes:
+def _call(transport, access_token: str, method: str, url: str, body) -> bytes:
     safe_url = parse_official_https(url)
     try:
-        response = transport(method, safe_url, user_token, body)
+        response = transport(method, safe_url, access_token, body)
     except ExportError:
         raise
     except Exception as exc:
-        raise ExportError(redact(str(exc), secrets=[user_token])) from None
+        raise ExportError(redact(str(exc), secrets=[access_token])) from None
     status = int(getattr(response, "status", 0))
     if 300 <= status < 400:
         raise ExportError("redirect refused")

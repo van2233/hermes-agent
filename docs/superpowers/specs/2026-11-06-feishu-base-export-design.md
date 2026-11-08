@@ -4,11 +4,11 @@
 
 ## 目标
 
-同事在飞书自建 bot 私聊里要求导出整个 Base 的 xlsx，或按聚合数据重绘柱状图 PNG/PDF，文件只回到本人私聊。每人独立用户 token。不用老板 token，不共用 CLI profile，不把文件发给别人。图必须带「据聚合数据重绘，非飞书原图」，不能当成飞书原图。
+机器人读取分享给它的、由管理员配置的那一个 Base，导出整个 xlsx，只回到当前请求的私聊。本批不用每人 OAuth、不用 HTTPS 回调、不存用户 token。不用 owner token，不回落用户身份。图表 PNG/PDF 仍未接通，不因此停 Excel。
 
 ## 这一轮实际做到的边界
 
-`export_xlsx` 在私聊绑定存在，并且应用凭据、已登记的公网 HTTPS `redirect_uri`、`callback_enabled` 和 loopback 监听地址都齐备时，才发授权链接。授权码只由 loopback HTTP 回调接收，再换 token、核对同一应用的 `open_id`、按需刷新，然后调用官方 Drive 导出。聊天里出现 `code=` 只会被改写成固定提示，不会换 token。缺任一项返回 `setup-required`。`check` 只报告缺项，不监听端口。`revoke` 只删除本机 token，不是飞书侧撤销。`chart_png` / `chart_pdf` 仍 blocked。
+`export_xlsx` 用现有应用的 tenant token 调用官方 Drive 导出。Base 只取管理员配置的 `base_token`，模型传入的其它值或 URL 会被拒绝。缺应用凭据或 `base_token` 时返回 `setup-required`。`bitable_no_table_permission` 表示目标表没有给应用权限，不是 scope 不足，也不改用用户身份。`chart_png` / `chart_pdf` 仍未接通。插件不监听端口。
 
 私聊文件不改核心。网关把最终回复里的 `MEDIA:` 发给当前消息的 `chat_id`。自动补附件只信任 `text_to_speech` 和 `image_generate`（`gateway/run.py` 的 `_AUTO_APPEND_MEDIA_TOOL_NAMES`）。插件用 `transform_llm_output` 去掉模型写的其它 `MEDIA:`，再写上本轮唯一路径。发送者 open_id 只来自原始事件；工具参数里的 open_id 被忽略。会话 message_id 对不上绑定就拒绝。
 

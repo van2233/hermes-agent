@@ -55,6 +55,6 @@ def test_allowed_capability_still_ignores_dispatcher_identity(tmp_path):
         parent_agent=object(),
     ))
     assert payload["status"] == "setup-required"
-    assert "redirect_uri" in payload["missing"]
+    assert "base_token" in payload["missing"]
     assert "ou_forgedforged1" not in json.dumps(payload)
     assert "forged-session" not in json.dumps(payload)
