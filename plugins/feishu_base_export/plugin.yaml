@@ -1,0 +1,13 @@
+name: feishu-base-export
+version: 0.2.0
+description: >
+  Opt-in bot export of one admin-configured Feishu Base into the current
+  private chat, including a locally redrawn bar chart PNG or PDF.
+author: fork-review
+kind: standalone
+provides_tools:
+  - feishu_base_export
+provides_hooks:
+  - pre_gateway_dispatch
+  - transform_llm_output
+python_dependencies: []
