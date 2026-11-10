@@ -15,10 +15,10 @@ import json
 import re
 from urllib.parse import urlencode
 
-from plugins.feishu_base_export.bitable_xlsx import ExportError
-from plugins.feishu_base_export.chart_data import ChartTable, EmptyAggregate, PayloadBoundsError
-from plugins.feishu_base_export.http_guard import parse_official_https
-from plugins.feishu_base_export.redact import redact
+from .bitable_xlsx import ExportError
+from .chart_data import ChartTable, EmptyAggregate, PayloadBoundsError
+from .http_guard import parse_official_https
+from .redact import redact
 
 _TABLE_ID = re.compile(r"^tbl[A-Za-z0-9]{4,30}$")
 _AGGS = frozenset({"sum", "count", "avg"})

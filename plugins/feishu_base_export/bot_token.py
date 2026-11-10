@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from plugins.feishu_base_export.bitable_xlsx import ExportError
-from plugins.feishu_base_export.http_guard import parse_official_https
-from plugins.feishu_base_export.redact import redact
+from .bitable_xlsx import ExportError
+from .http_guard import parse_official_https
+from .redact import redact
 
 _TENANT = "/open-apis/auth/v3/tenant_access_token/internal"
 

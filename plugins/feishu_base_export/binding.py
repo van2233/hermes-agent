@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 
-from plugins.feishu_base_export.identity import extract_sender_open_id, is_app_open_id
+from .identity import extract_sender_open_id, is_app_open_id
 
 _store_lock = threading.Lock()
 _default: "BindingStore | None" = None

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 
 def register(ctx):
-    from plugins.feishu_base_export.hooks import on_pre_gateway_dispatch, on_transform_llm_output
-    from plugins.feishu_base_export.tool import SCHEMA, handle
+    from .hooks import on_pre_gateway_dispatch, on_transform_llm_output
+    from .tool import SCHEMA, handle
 
     ctx.register_tool(
         name="feishu_base_export",

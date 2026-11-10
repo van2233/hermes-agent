@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from plugins.feishu_base_export.binding import consider_event, default_store
-from plugins.feishu_base_export.delivery import transform_response
+from .binding import consider_event, default_store
+from .delivery import transform_response
 
 
 def on_pre_gateway_dispatch(event=None, **kwargs):

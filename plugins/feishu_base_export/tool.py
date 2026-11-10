@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextvars
 import json
 
-from plugins.feishu_base_export.service import run_action
+from .service import run_action
 
 SCHEMA = {
     "name": "feishu_base_export",
@@ -56,11 +56,11 @@ def handle(args, **kwargs) -> str:
 
 
 def _production_deps():
-    from plugins.feishu_base_export.binding import default_store
-    from plugins.feishu_base_export.config import production_config
-    from plugins.feishu_base_export.delivery import default_output_dir
-    from plugins.feishu_base_export.http_guard import guarded_request
-    from plugins.feishu_base_export.service import Deps, clock
+    from .binding import default_store
+    from .config import production_config
+    from .delivery import default_output_dir
+    from .http_guard import guarded_request
+    from .service import Deps, clock
 
     return Deps(
         session={},

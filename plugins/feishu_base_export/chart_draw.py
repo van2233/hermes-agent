@@ -7,10 +7,10 @@ import struct
 import zlib
 from pathlib import Path
 
-from plugins.feishu_base_export.chart_data import ChartTable
-from plugins.feishu_base_export.disclaimer_rgb import HEIGHT as MARK_H
-from plugins.feishu_base_export.disclaimer_rgb import WIDTH as MARK_W
-from plugins.feishu_base_export.disclaimer_rgb import disclaimer_rgb
+from .chart_data import ChartTable
+from .disclaimer_rgb import HEIGHT as MARK_H
+from .disclaimer_rgb import WIDTH as MARK_W
+from .disclaimer_rgb import disclaimer_rgb
 
 _WIDTH = 640
 _HEIGHT = 360

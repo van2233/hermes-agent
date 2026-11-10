@@ -6,13 +6,13 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from plugins.feishu_base_export.bitable_chart import chart_table, check_chart_args
-from plugins.feishu_base_export.bitable_xlsx import ExportError, export_bitable_xlsx
-from plugins.feishu_base_export.bot_token import tenant_access_token
-from plugins.feishu_base_export.chart_data import EmptyAggregate, PayloadBoundsError
-from plugins.feishu_base_export.chart_draw import CHART_CAPTION, render_chart
-from plugins.feishu_base_export.config import RuntimeConfig
-from plugins.feishu_base_export.delivery import stage_file
+from .bitable_chart import chart_table, check_chart_args
+from .bitable_xlsx import ExportError, export_bitable_xlsx
+from .bot_token import tenant_access_token
+from .chart_data import EmptyAggregate, PayloadBoundsError
+from .chart_draw import CHART_CAPTION, render_chart
+from .config import RuntimeConfig
+from .delivery import stage_file
 
 CHART_ACTIONS = ("chart_png", "chart_pdf")
 _TABLE_PERMISSION = (

@@ -10,9 +10,9 @@ import json
 import re
 from collections.abc import Callable
 
-from plugins.feishu_base_export.http_guard import OFFICIAL_HOSTS, parse_official_https
-from plugins.feishu_base_export.redact import redact
-from plugins.feishu_base_export.xlsx_safe import MAX_BYTES, assert_safe_xlsx
+from .http_guard import OFFICIAL_HOSTS, parse_official_https
+from .redact import redact
+from .xlsx_safe import MAX_BYTES, assert_safe_xlsx
 
 _BASE_TOKEN = re.compile(r"^[A-Za-z0-9]{1,27}$")
 _TICKET = re.compile(r"^[0-9]{1,32}$")

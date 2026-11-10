@@ -12,7 +12,7 @@ hermes plugins enable feishu-base-export
 hermes config set plugins.entries.feishu-base-export.settings.base_token E6OpbISaeaZAVRsojtacOU9rnjf
 ```
 
-应用凭据继续用现有的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`，不要 `config get` 它们。启用写入 `plugins.enabled`。Gateway 下次启动才会加载插件；本包不执行重启。
+应用凭据继续用现有的 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`，不要 `config get` 它们。启用写入 `plugins.enabled`。`hermes plugins enable` 对每个用户插件都会询问是否允许覆盖内置工具；本插件的工具名 `feishu_base_export` 不在内置名单里，注册时也不带 override，选 N 即可。Gateway 下次启动才会加载插件；本包不执行重启。
 
 ## 唯一的 ACL 动作
 
