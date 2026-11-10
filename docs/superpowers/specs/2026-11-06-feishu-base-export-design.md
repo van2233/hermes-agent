@@ -8,7 +8,7 @@
 
 ## 这一轮实际做到的边界
 
-`export_xlsx` 用现有应用的 tenant token 调用官方 Drive 导出。Base 只取管理员配置的 `base_token`，模型传入的其它值或 URL 会被拒绝。缺应用凭据或 `base_token` 时返回 `setup-required`。`bitable_no_table_permission` 表示目标表没有给应用权限，不是 scope 不足，也不改用用户身份。`chart_png` / `chart_pdf` 仍未接通。插件不监听端口。
+`export_xlsx` 用现有应用的 tenant token 调用官方 Drive 导出。Base 只取管理员配置的 `base_token`，模型传入的其它值或 URL 会被拒绝。缺应用凭据或 `base_token` 时返回 `setup-required`。`bitable_no_table_permission` 表示目标表没有给应用权限，不是 scope 不足，也不改用用户身份。`chart_png` / `chart_pdf` 用已公开的查询记录接口在本地聚合并重画，样式与飞书原图不同。插件不监听端口。
 
 私聊文件不改核心。网关把最终回复里的 `MEDIA:` 发给当前消息的 `chat_id`。自动补附件只信任 `text_to_speech` 和 `image_generate`（`gateway/run.py` 的 `_AUTO_APPEND_MEDIA_TOOL_NAMES`）。插件用 `transform_llm_output` 去掉模型写的其它 `MEDIA:`，再写上本轮唯一路径。发送者 open_id 只来自原始事件；工具参数里的 open_id 被忽略。会话 message_id 对不上绑定就拒绝。
 

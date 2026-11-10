@@ -5,14 +5,14 @@ from __future__ import annotations
 import contextvars
 import json
 
-from plugins.feishu_base_export.blocked import CHART_BLOCKED
-from plugins.feishu_base_export.service import CHART_ACTIONS, run_action
+from plugins.feishu_base_export.service import run_action
 
 SCHEMA = {
     "name": "feishu_base_export",
     "description": (
-        "Export the one admin-configured Feishu Base to xlsx with the bot tenant token "
-        "and return it in the current private chat. chart_png and chart_pdf are not connected. "
+        "Using the bot tenant token and the one admin-configured Base, export xlsx "
+        "or redraw a bar chart as PNG or PDF into the current private chat. "
+        "The chart is aggregated from table records and is not the original Feishu image. "
         "Do not pass open_id, chat_id, or a different base."
     ),
     "parameters": {
@@ -22,6 +22,10 @@ SCHEMA = {
                 "type": "string",
                 "enum": ["export_xlsx", "check", "chart_png", "chart_pdf"],
             },
+            "table": {"type": "string", "description": "Table name or tbl id in the configured Base."},
+            "category": {"type": "string", "description": "Category field for the bar chart."},
+            "value": {"type": "string", "description": "Numeric field. Omit when agg is count."},
+            "agg": {"type": "string", "enum": ["sum", "count", "avg"], "description": "Aggregation. Default sum."},
         },
         "required": ["action"],
     },
@@ -47,11 +51,6 @@ def reset_deps_override(token) -> None:
 
 
 def handle(args, **kwargs) -> str:
-    action = str((args or {}).get("action") or "")
-    if action in CHART_ACTIONS:
-        return json.dumps({
-            "ok": False, "status": "blocked", "action": action, "reason": CHART_BLOCKED,
-        })
     deps = kwargs.get("_deps") or active_deps()
     return json.dumps(run_action(args or {}, deps))
 

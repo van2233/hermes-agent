@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import struct
 import zlib
+from pathlib import Path
 
 from plugins.feishu_base_export.chart_data import ChartTable
 from plugins.feishu_base_export.disclaimer_rgb import HEIGHT as MARK_H
@@ -14,6 +16,15 @@ _WIDTH = 640
 _HEIGHT = 360
 _ORIGIN = (8, 8)
 _INK = (160, 0, 0)
+CHART_CAPTION = "据聚合数据重绘，非飞书原图。样式与飞书原图不同。"
+FONT_CANDIDATES = (
+    r"C:\Windows\Fonts\msyh.ttc",
+    r"C:\Windows\Fonts\msyh.ttf",
+    r"C:\Windows\Fonts\simhei.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+)
 
 
 def render_pixels(table: ChartTable) -> tuple[int, int, bytes]:
@@ -24,12 +35,26 @@ def render_pixels(table: ChartTable) -> tuple[int, int, bytes]:
 
 
 def render_chart(table: ChartTable, fmt: str) -> bytes:
+    if fmt not in {"png", "pdf"}:
+        raise ValueError("format")
     width, height, raw = render_pixels(table)
+    labeled = _label_image(width, height, raw, table)
+    if labeled is not None:
+        buffer = io.BytesIO()
+        labeled.save(buffer, format="PNG" if fmt == "png" else "PDF")
+        return buffer.getvalue()
     if fmt == "png":
         return _png(width, height, raw)
     if fmt == "pdf":
         return _pdf(width, height, raw)
     raise ValueError("format")
+
+
+def first_font(candidates: tuple[str, ...] = FONT_CANDIDATES) -> str:
+    for item in candidates:
+        if Path(item).is_file():
+            return item
+    return ""
 
 
 def _blit(canvas: bytearray, bitmap: bytes, left: int, top: int) -> None:
@@ -64,6 +89,24 @@ def _rect(canvas: bytearray, left: int, top: int, width: int, height: int, color
         start = (y * _WIDTH + max(left, 0)) * 3
         end = (y * _WIDTH + min(left + width, _WIDTH)) * 3
         canvas[start:end] = pixel * ((end - start) // 3)
+
+
+def _label_image(width: int, height: int, rgb: bytes, table: ChartTable):
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return None
+    image = Image.frombytes("RGB", (width, height), rgb)
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    chosen = first_font()
+    if chosen:
+        try:
+            font = ImageFont.truetype(chosen, size=14)
+        except OSError:
+            font = ImageFont.load_default()
+    draw.text((8, _ORIGIN[1] + MARK_H + 2), CHART_CAPTION, fill=(0, 0, 0), font=font)
+    return image
 
 
 def _png(width: int, height: int, rgb: bytes) -> bytes:

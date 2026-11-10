@@ -16,14 +16,62 @@ from tests.plugins.test_feishu_base_export import BASE, OPEN_ID, _event, _xlsx
 TARGET = "E6OpbISaeaZAVRsojtacOU9rnjf"
 
 
-def test_chart_actions_stay_unconnected():
+def test_bar_chart_uses_records_from_the_configured_base_only(tmp_path):
+    from plugins.feishu_base_export.chart_draw import FONT_CANDIDATES
+    from plugins.feishu_base_export.delivery import reset_ledger
+
+    assert FONT_CANDIDATES[0].endswith("msyh.ttc")
+    assert FONT_CANDIDATES[2].endswith("simhei.ttf")
     actions = SCHEMA["parameters"]["properties"]["action"]["enum"]
-    assert "export_xlsx" in actions and "chart_png" in actions and "chart_pdf" in actions
-    for action in ("chart_png", "chart_pdf"):
-        payload = json.loads(handle({"action": action, "open_id": "ou_forged"}))
-        assert payload["status"] == "blocked"
-        assert "png" in payload["reason"] and "pdf" in payload["reason"]
-        assert "未接通" in payload["reason"]
+    assert "chart_png" in actions and "chart_pdf" in actions
+    store = BindingStore()
+    consider_event(_event(), store)
+    config = RuntimeConfig(app_id="cli_app", app_secret="app-secret-value", base_token=TARGET)
+    calls = []
+
+    def transport(method, url, token, body):
+        calls.append((method, url, token, body))
+        if url.endswith("/tenant_access_token/internal"):
+            return SimpleNamespace(status=200, body=json.dumps({"code": 0, "tenant_access_token": "t-bot"}).encode())
+        if url.endswith("/tables?page_size=100"):
+            assert TARGET in url and BASE not in url
+            return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"items": [
+                {"table_id": "tblSales01", "name": "销售"},
+            ]}}).encode())
+        if "/records/search" in url:
+            assert "tblSales01" in url and token == "t-bot"
+            return SimpleNamespace(status=200, body=json.dumps({"code": 0, "data": {"has_more": False, "items": [
+                {"fields": {"城市": "杭州", "金额": 3}},
+                {"fields": {"城市": "杭州", "金额": 1}},
+                {"fields": {"城市": "宁波", "金额": 4}},
+            ]}}).encode())
+        raise AssertionError(url)
+
+    reset_ledger()
+    deps = _deps(transport, store, tmp_path, config)
+    missing = json.loads(handle({"action": "chart_png"}, _deps=deps))
+    assert missing["status"] == "chart-failed" and calls == []
+    png = json.loads(handle(
+        {"action": "chart_png", "table": "销售", "category": "城市", "value": "金额", "agg": "sum", "base_token": BASE},
+        _deps=deps,
+    ))
+    assert png["status"] == "rejected" and calls == []
+    png = json.loads(handle(
+        {"action": "chart_png", "table": "销售", "category": "城市", "value": "金额", "agg": "sum"},
+        _deps=deps,
+    ))
+    assert png["status"] == "ready" and png["redrawn"] is True
+    written = list(tmp_path.glob("*.png"))
+    assert len(written) == 1 and written[0].read_bytes().startswith(b"\x89PNG")
+    shown = transform_response("原图 MEDIA:/tmp/stolen.png", message_id="om_1")
+    assert "非飞书原图" in shown and f"MEDIA:{written[0]}" in shown and "stolen.png" not in shown
+    assert not any("/authen/" in call[1] or "dashboards/blocks" in call[1] for call in calls)
+    pdf = json.loads(handle(
+        {"action": "chart_pdf", "table": "销售", "category": "城市", "value": "金额"},
+        _deps=deps,
+    ))
+    assert pdf["status"] == "ready"
+    assert list(tmp_path.glob("*.pdf"))[0].read_bytes().startswith(b"%PDF")
 
 
 def test_bot_export_uses_the_configured_base_and_the_current_dm(tmp_path):

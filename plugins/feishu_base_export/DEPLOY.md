@@ -20,7 +20,7 @@ hermes config set plugins.entries.feishu-base-export.settings.base_token E6OpbIS
 
 ## 图表
 
-`chart_png` 和 `chart_pdf` 未接通。官方文档没有确认的聚合数据接口。Excel 不依赖它们。
+`chart_png` / `chart_pdf` 用官方查询记录接口在本地聚合后重画，不是飞书原图。参数是 `table`、`category`、`value`、`agg`（sum、count、avg）。只读已配置的 Base。最小权限是 `bitable:app:readonly`，不要另外申请写权限。仪表盘 block 没有公开的聚合数据 HTTP 接口，所以不调用它。
 
 ## 策略
 

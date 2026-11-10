@@ -50,7 +50,7 @@ def transform_response(response_text: str, *, message_id: str) -> str | None:
     if staged.kind == "text":
         return staged.text
     cleaned = _MEDIA.sub("", response_text or "").strip()
-    return f"{cleaned}\nMEDIA:{staged.path}".strip()
+    return f"{cleaned}\n{staged.text}\nMEDIA:{staged.path}".strip()
 
 
 def _put(message_id: str, staged: Staged) -> None:

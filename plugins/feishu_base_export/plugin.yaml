@@ -2,7 +2,7 @@ name: feishu-base-export
 version: 0.2.0
 description: >
   Opt-in bot export of one admin-configured Feishu Base into the current
-  private chat. Does not enable itself. chart_png and chart_pdf are not connected.
+  private chat, including a locally redrawn bar chart PNG or PDF.
 author: fork-review
 kind: standalone
 provides_tools:
